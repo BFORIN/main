@@ -17,7 +17,7 @@ def generate():
     if first in reroll_triggers:
         # 触发重抽，第二次结果直接输出（不再判断是否重抽）
         second = random.choice(pool)
-        result_var.set(f"第一次: {first}  →  触发重抽\n最终结果: {second}")
+        result_var.set(f"结果: {second}")
     else:
         result_var.set(f"结果: {first}")
 
