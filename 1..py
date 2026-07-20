@@ -70,7 +70,7 @@ def on_mode_change(*args):
     """模式切换时的处理：清空提示，重置伪随机池"""
     if mode_var.get() == "pseudo":
         init_pool()
-        result_var.set("点击下方按钮开始抽签（不重复）")
+        result_var.set("点击下方按钮开始抽签（无重复）")
     else:
         result_var.set("点击下方按钮开始抽签（真随机）")
     update_remaining()
@@ -115,10 +115,10 @@ mode_var = tk.StringVar(value="pseudo")
 mode_var.trace_add("write", on_mode_change)
 
 ttk.Radiobutton(
-    mode_frame, text="伪随机（不重复）", variable=mode_var, value="pseudo"
+    mode_frame, text="伪随机（无重复）", variable=mode_var, value="pseudo"
 ).pack(side="left", padx=10)
 ttk.Radiobutton(
-    mode_frame, text="真随机（可重复）", variable=mode_var, value="true_random"
+    mode_frame, text="真随机（有重复）", variable=mode_var, value="true_random"
 ).pack(side="left", padx=10)
 
 # 操作按钮
