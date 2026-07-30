@@ -57,13 +57,13 @@ def update_remaining():
     if mode_var.get() == "pseudo":
         remaining_str.set(f"剩余: {len(remaining_pool)}")
     else:
-        remaining_str.set("真随机模式，数字无限")
+        remaining_str.set("真随机模式，数字不限")
 
 def reset_pool():
     """手动重置数字池（伪随机模式）"""
     global remaining_pool
     init_pool()
-    result_var.set("数字池已手动重置，请继续抽签")
+    result_var.set("数字池已手动重置，点击按钮继续抽签")
     update_remaining()
 
 def on_mode_change(*args):
