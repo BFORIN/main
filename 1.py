@@ -47,7 +47,7 @@ def update_remaining():
     if mode_var.get() == "pseudo":
         remaining_str.set(f"随机池剩余: {len(remaining_pool)}")
     else:
-        remaining_str.set("放回模式下显示剩余数字")
+        remaining_str.set("放回模式不显示剩余数字")
 def reset_pool():
     """手动重置数字池（不放回模式）"""
     global remaining_pool
