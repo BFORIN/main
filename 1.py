@@ -72,7 +72,7 @@ def show_about():
     about.grab_set()
     info_font = (default_family, 11)
     link_font = (default_family, 11, "underline")
-    ttk.Label(about, text="本软件遵循GUN自由软件基金会协议", font=info_font, justify="center").pack(pady=(30, 10))
+    ttk.Label(about, text="本软件遵循GNU自由软件基金会协议", font=info_font, justify="center").pack(pady=(30, 10))
     link_frame = ttk.Frame(about)
     link_frame.pack(pady=2)
     ttk.Label(link_frame, text="项目地址: ", font=info_font).pack(side="left")
