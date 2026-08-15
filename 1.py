@@ -80,6 +80,19 @@ def show_about():
     link_label.pack(side="left")
     link_label.bind("<Button-1>", lambda e: open_link("https://github.com/BFORIN/main"))
     ttk.Button(about, text="确定", command=about.destroy).pack(pady=(20, 10))
+def show_disclaimer():
+    """显示免责声明对话框"""
+    disclaimer = tk.Toplevel(root)
+    disclaimer.title("免责声明")
+    disclaimer.geometry("420x220")
+    disclaimer.resizable(False, False)
+    disclaimer.transient(root)
+    disclaimer.grab_set()
+    text = (
+        "        本软件仅用于随机结果展示，不构成任何投资、决策、或法律依据。使用者应自行承担由本软件产生的全部风险和后果。\n        开发者不对因使用本软件造成的任何直接或间接损失负责。\n        最终解释权归开发者所有。"
+    )
+    ttk.Label(disclaimer, text=text, font=(default_family, 11), justify="left", wraplength=360).pack(padx=20, pady=(20, 10))
+    ttk.Button(disclaimer, text="确定", command=disclaimer.destroy).pack(pady=(0, 15))
 def toggle_topmost():
     """切换窗口是否始终显示在最前层，用于覆盖独占全屏窗口"""
     is_topmost = root.attributes("-topmost")
@@ -99,6 +112,7 @@ root.resizable(False, False)
 menubar = tk.Menu(root)
 help_menu = tk.Menu(menubar, tearoff=0)
 help_menu.add_command(label="关于", command=show_about)
+help_menu.add_command(label="免责声明", command=show_disclaimer)
 menubar.add_cascade(label="帮助", menu=help_menu)
 root.config(menu=menubar)
 # 顶部工具栏：放在“帮助”旁边，不放在下拉菜单中
