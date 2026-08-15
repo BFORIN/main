@@ -80,6 +80,12 @@ def show_about():
     link_label.pack(side="left")
     link_label.bind("<Button-1>", lambda e: open_link("https://github.com/BFORIN/main"))
     ttk.Button(about, text="确定", command=about.destroy).pack(pady=(20, 10))
+def toggle_topmost():
+    """切换窗口是否始终显示在最前层，用于覆盖独占全屏窗口"""
+    is_topmost = root.attributes("-topmost")
+    root.attributes("-topmost", not is_topmost)
+    btn_topmost.configure(text="📌 取消置顶" if not is_topmost else "📌 置顶显示")
+
 def open_link(url):
     """在默认浏览器中打开链接"""
     import webbrowser
@@ -95,6 +101,11 @@ help_menu = tk.Menu(menubar, tearoff=0)
 help_menu.add_command(label="关于", command=show_about)
 menubar.add_cascade(label="帮助", menu=help_menu)
 root.config(menu=menubar)
+# 顶部工具栏：放在“帮助”旁边，不放在下拉菜单中
+toolbar = ttk.Frame(root)
+toolbar.pack(fill="x", padx=8, pady=(6, 0))
+btn_topmost = ttk.Button(toolbar, text="📌 置顶显示", command=toggle_topmost)
+btn_topmost.pack(anchor="e")
 # 使用系统默认字体（避免跨平台字体缺失）
 default_family = tkfont.nametofont("TkDefaultFont").actual("family")
 big_font = (default_family, 16, "bold")
