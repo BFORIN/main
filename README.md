@@ -78,10 +78,6 @@ pyinstaller -w random_draw.py
 本项目采用 **GNU General Public License v3.0 (GPL‑3.0)** 开源。
 详见仓库根目录下的 LICENSE 文件。
 
-## 🔗 项目地址
-
-项目地址：[https://github\.com/BFORIN/main](https://github.com/BFORIN/main)
-
 ## 📝 更新日志
 
 ### v1\.0
