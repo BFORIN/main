@@ -75,8 +75,8 @@ pyinstaller -w random_draw.py
 ```
 
 ## 📄 开源协议
-
-本项目遵循 **GNU 自由软件基金会协议**，开源免费、可自由学习、修改与分发。
+本项目采用 **GNU General Public License v3.0 (GPL‑3.0)** 开源。
+详见仓库根目录下的 LICENSE 文件。
 
 ## 🔗 项目地址
 
