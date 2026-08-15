@@ -66,32 +66,56 @@ def show_about():
     """显示关于页面"""
     about = tk.Toplevel(root)
     about.title("关于")
-    about.geometry("360x200")
-    about.resizable(False, False)
+    about.geometry("420x220")
+    about.minsize(360, 200)
+    about.resizable(True, False)
     about.transient(root)
     about.grab_set()
     info_font = (default_family, 11)
     link_font = (default_family, 11, "underline")
-    ttk.Label(about, text="本软件遵循 GNU General Public License v3.0 (GPL‑3.0) 开源协议", font=info_font, justify="center").pack(pady=(30, 10))
+    ttk.Label(
+        about,
+        text="本软件遵循 GNU General Public License v3.0 (GPL‑3.0) 开源协议",
+        font=info_font,
+        justify="center",
+        wraplength=340,
+    ).pack(pady=(24, 10))
     link_frame = ttk.Frame(about)
-    link_frame.pack(pady=2)
+    link_frame.pack(pady=2, fill="x", padx=18)
     ttk.Label(link_frame, text="项目地址: ", font=info_font).pack(side="left")
-    link_label = ttk.Label(link_frame, text="https://github.com/BFORIN/main", font=link_font, foreground="blue", cursor="hand2")
-    link_label.pack(side="left")
+    link_label = ttk.Label(
+        link_frame,
+        text="https://github.com/BFORIN/main",
+        font=link_font,
+        foreground="blue",
+        cursor="hand2",
+        wraplength=250,
+        justify="left",
+    )
+    link_label.pack(side="left", fill="x", expand=True)
     link_label.bind("<Button-1>", lambda e: open_link("https://github.com/BFORIN/main"))
     ttk.Button(about, text="确定", command=about.destroy).pack(pady=(20, 10))
 def show_disclaimer():
     """显示免责声明对话框"""
     disclaimer = tk.Toplevel(root)
     disclaimer.title("免责声明")
-    disclaimer.geometry("420x220")
-    disclaimer.resizable(False, False)
+    disclaimer.geometry("500x260")
+    disclaimer.minsize(420, 220)
+    disclaimer.resizable(True, False)
     disclaimer.transient(root)
     disclaimer.grab_set()
     text = (
-        "        本软件仅用于随机结果展示，不构成任何投资、决策、或法律依据。使用者应自行承担由本软件产生的全部风险和后果。\n        开发者不对因使用本软件造成的任何直接或间接损失负责。\n        最终解释权归开发者所有。"
+        "        本软件仅用于随机结果展示，不构成任何投资、决策、或法律依据。使用者应自行承担由本软件产生的全部风险和后果。\n"
+        "        开发者不对因使用本软件造成的任何直接或间接损失负责。\n"
+        "        最终解释权归开发者所有。"
     )
-    ttk.Label(disclaimer, text=text, font=(default_family, 11), justify="left", wraplength=360).pack(padx=20, pady=(20, 10))
+    ttk.Label(
+        disclaimer,
+        text=text,
+        font=(default_family, 11),
+        justify="left",
+        wraplength=440,
+    ).pack(padx=20, pady=(20, 10), fill="x")
     ttk.Button(disclaimer, text="确定", command=disclaimer.destroy).pack(pady=(0, 15))
 def toggle_topmost():
     """切换窗口是否始终显示在最前层，用于覆盖独占全屏窗口"""
@@ -106,8 +130,9 @@ def open_link(url):
 # === 主窗口 ===
 root = tk.Tk()
 root.title("随机抽签器 · 双模式")
-root.geometry("420x280")
-root.resizable(False, False)
+root.geometry("460x320")
+root.minsize(400, 260)
+root.resizable(True, True)
 # 菜单栏
 menubar = tk.Menu(root)
 help_menu = tk.Menu(menubar, tearoff=0)
@@ -131,7 +156,7 @@ result_label = ttk.Label(
     textvariable=result_var,
     font=big_font,
     justify="center",
-    wraplength=380,
+    wraplength=420,
 )
 result_label.pack(expand=True, fill="both", padx=20, pady=(20, 5))
 # 剩余数字显示（仅不放回有效）
@@ -141,19 +166,29 @@ remaining_label = ttk.Label(
     textvariable=remaining_str,
     font=small_font,
     foreground="gray",
+    wraplength=360,
+    justify="center",
 )
-remaining_label.pack(pady=(0, 10))
+remaining_label.pack(pady=(0, 10), padx=20)
 # 模式选择框架
 mode_frame = ttk.Frame(root)
 mode_frame.pack(pady=5)
 mode_var = tk.StringVar(value="pseudo")
 mode_var.trace_add("write", on_mode_change)
 ttk.Radiobutton(
-    mode_frame, text="不放回（伪随机）", variable=mode_var, value="pseudo"
-).pack(side="left", padx=10)
+    mode_frame,
+    text="不放回（伪随机）",
+    variable=mode_var,
+    value="pseudo",
+    width=16,
+).pack(side="left", padx=8)
 ttk.Radiobutton(
-    mode_frame, text="放回（真随机）", variable=mode_var, value="true_random"
-).pack(side="left", padx=10)
+    mode_frame,
+    text="放回（真随机）",
+    variable=mode_var,
+    value="true_random",
+    width=16,
+).pack(side="left", padx=8)
 # 操作按钮
 btn_frame = ttk.Frame(root)
 btn_frame.pack(pady=(10, 20))
