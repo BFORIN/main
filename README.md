@@ -47,7 +47,7 @@
 ### 1\. 源码运行
 
 ```bash
-python 1.py
+python random_draw.py
 ```
 
 ### 2\. Windows 打包方式（推荐无报毒方案）
@@ -56,20 +56,20 @@ python 1.py
 
 ```bash
 pip install nuitka
-python -m nuitka --onefile --windows-disable-console 1.py
+python -m nuitka --onefile --windows-disable-console random_draw.py
 ```
 
 #### PyInstaller 普通打包
 
 ```bash
-pyinstaller -w 1.py
+pyinstaller -w random_draw.py
 ```
 
 ## 📂 项目结构
 
 ```Plain Text
 .
-├── 1.py                # 主程序源码
+├── random_draw.py               # 主程序源码
 ├── README.md           # 项目说明文档
 └── LICENSE             # 开源协议文件
 ```
