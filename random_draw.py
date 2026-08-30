@@ -104,6 +104,42 @@ def reload_config():
     max_rerolls = int(_cfg.get("max_rerolls", 10))
 
 
+def get_autostart_path():
+    if not sys.platform.startswith("win"):
+        return None
+    startup_dir = os.path.join(os.path.expanduser("~"), "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+    os.makedirs(startup_dir, exist_ok=True)
+    return os.path.join(startup_dir, "random_draw.bat")
+
+
+def is_autostart_enabled():
+    if not sys.platform.startswith("win"):
+        return False
+    autostart_path = get_autostart_path()
+    return bool(autostart_path and os.path.exists(autostart_path))
+
+
+def set_autostart(enabled):
+    if not sys.platform.startswith("win"):
+        return False
+    autostart_path = get_autostart_path()
+    if not autostart_path:
+        return False
+    if enabled:
+        script_path = os.path.abspath(__file__)
+        python_exe = sys.executable
+        batch_content = (
+            "@echo off\n"
+            f'"{python_exe}" "{script_path}"\n'
+        )
+        with open(autostart_path, "w", encoding="utf-8") as f:
+            f.write(batch_content)
+        return True
+    if os.path.exists(autostart_path):
+        os.remove(autostart_path)
+    return True
+
+
 # 加载配置，替换原硬编码常量
 reload_config()
 remaining_pool = []
@@ -198,6 +234,58 @@ def on_mode_change(*args):
     update_remaining()
 
 
+def minimize_to_floating():
+    """最小化到悬浮窗，不退出程序"""
+    if floating_window is not None and floating_window.winfo_exists():
+        floating_window.deiconify()
+    else:
+        show_floating_window()
+    root.withdraw()
+
+
+def restore_main_window():
+    """从悬浮窗恢复主窗口"""
+    if floating_window is not None and floating_window.winfo_exists():
+        floating_window.withdraw()
+    root.deiconify()
+    root.lift()
+    root.attributes("-topmost", True)
+    root.focus_force()
+
+
+def show_floating_window():
+    """显示一个极简悬浮窗，作为收起状态"""
+    global floating_window
+    if floating_window is not None and floating_window.winfo_exists():
+        floating_window.deiconify()
+        return
+
+    floating_window = tk.Toplevel(root)
+    floating_window.title("随机抽签器")
+    floating_window.geometry("170x80")
+    floating_window.overrideredirect(True)
+    floating_window.attributes("-topmost", True)
+    floating_window.configure(bg="#f0f0f0")
+
+    pos_x = root.winfo_x() + root.winfo_width() - 180
+    pos_y = root.winfo_y() + root.winfo_height() - 90
+    floating_window.geometry(f"+{pos_x}+{pos_y}")
+
+    tk.Label(
+        floating_window,
+        text="随机抽签器",
+        bg="#f0f0f0",
+        font=(default_family, 11, "bold"),
+    ).pack(pady=(12, 6))
+    ttk.Button(floating_window, text="打开", command=restore_main_window).pack(pady=(0, 8))
+    floating_window.protocol("WM_DELETE_WINDOW", lambda: root.destroy())
+    floating_window.bind("<Button-1>", lambda e: restore_main_window())
+
+
+def toggle_autostart():
+    set_autostart(autostart_var.get())
+
+
 def show_about():
     """显示关于页面"""
     about = tk.Toplevel(root)
@@ -272,8 +360,15 @@ help_menu = tk.Menu(menubar, tearoff=0)
 help_menu.add_command(label="编辑配置文件", command=open_config_file)
 help_menu.add_command(label="关于", command=show_about)
 help_menu.add_command(label="免责声明", command=show_disclaimer)
+help_menu.add_separator()
+autostart_var = tk.BooleanVar(value=is_autostart_enabled())
+help_menu.add_checkbutton(label="开机自启", variable=autostart_var, command=toggle_autostart)
+help_menu.add_command(label="恢复主窗口", command=restore_main_window)
 menubar.add_cascade(label="帮助", menu=help_menu)
 root.config(menu=menubar)
+
+floating_window = None
+root.protocol("WM_DELETE_WINDOW", minimize_to_floating)
 
 # 使用系统默认字体（避免跨平台字体缺失）
 default_family = tkfont.nametofont("TkDefaultFont").actual("family")
