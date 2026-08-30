@@ -9,9 +9,11 @@ import os
 import webbrowser
 
 DEFAULT_CONFIG = {
-    "excluded": [39, 50],
+    "excluded": [37,39, 50],
     "reroll_triggers": [46, 47, 49],
-    "max_rerolls": 10
+    "max_rerolls": 10,
+    "pool_min": 1,
+    "pool_max": 54,
 }
 
 
@@ -43,6 +45,17 @@ def normalize_config(raw_cfg):
         merged["max_rerolls"] = max(0, int(merged.get("max_rerolls", DEFAULT_CONFIG["max_rerolls"])))
     except Exception:
         merged["max_rerolls"] = DEFAULT_CONFIG["max_rerolls"]
+
+    try:
+        pool_min = int(merged.get("pool_min", DEFAULT_CONFIG["pool_min"]))
+        pool_max = int(merged.get("pool_max", DEFAULT_CONFIG["pool_max"]))
+        if pool_min > pool_max:
+            pool_min, pool_max = DEFAULT_CONFIG["pool_min"], DEFAULT_CONFIG["pool_max"]
+        merged["pool_min"] = pool_min
+        merged["pool_max"] = pool_max
+    except Exception:
+        merged["pool_min"] = DEFAULT_CONFIG["pool_min"]
+        merged["pool_max"] = DEFAULT_CONFIG["pool_max"]
 
     return merged
 
@@ -96,12 +109,17 @@ def open_config_file():
 
 
 def reload_config():
-    """从配置文件热加载禁用数字、重抽触发数字和重抽次数"""
-    global _cfg, excluded, reroll_triggers, max_rerolls
+    """从配置文件热加载禁用数字、重抽触发数字、重抽次数和随机池范围"""
+    global _cfg, excluded, reroll_triggers, max_rerolls, pool_min, pool_max
     _cfg = load_config()
     excluded = set(_cfg["excluded"])
     reroll_triggers = set(_cfg["reroll_triggers"])
     max_rerolls = int(_cfg.get("max_rerolls", 10))
+
+    pool_min = int(_cfg.get("pool_min", DEFAULT_CONFIG["pool_min"]))
+    pool_max = int(_cfg.get("pool_max", DEFAULT_CONFIG["pool_max"]))
+    if pool_min > pool_max:
+        pool_min, pool_max = DEFAULT_CONFIG["pool_min"], DEFAULT_CONFIG["pool_max"]
 
 
 def get_autostart_path():
@@ -146,10 +164,10 @@ remaining_pool = []
 
 
 def init_pool():
-    """初始化/重置数字池（仅不放回模式使用）"""
+    """初始化/重置数字池（仅不放回模式使用），并按配置范围计算"""
     reload_config()
     global remaining_pool
-    remaining_pool = [x for x in range(1, 55) if x not in excluded]
+    remaining_pool = [x for x in range(pool_min, pool_max + 1) if x not in excluded]
     random.shuffle(remaining_pool)
 
 
@@ -181,8 +199,7 @@ def generate():
     if mode == "pseudo":  # 不放回（不重复）
         global remaining_pool
         if not remaining_pool:
-            init_pool()
-            result_var.set("本轮已全部抽完，以自动重置新一轮")
+            result_var.set("数字池已抽完，请重置后再继续")
             update_remaining()
             return
         # 热加载配置中的重抽次数：触发数字放回池中，直到抽到非触发数或达到上限
@@ -195,8 +212,8 @@ def generate():
                 break
         update_remaining()
     else:  # 放回（每次独立，可重复）
-        # 候选池：1~54 排除配置内 excluded
-        pool = [x for x in range(1, 55) if x not in excluded]
+        # 候选池：按配置区间计算，排除配置内 excluded
+        pool = [x for x in range(pool_min, pool_max + 1) if x not in excluded]
         # 无限重抽：抽到触发数就继续抽，直到抽到非触发数
         while True:
             num = random.choice(pool)
@@ -253,8 +270,25 @@ def restore_main_window():
     root.focus_force()
 
 
+def start_drag(event):
+    """记录悬浮窗拖拽起点"""
+    if floating_window is None or not floating_window.winfo_exists():
+        return
+    floating_window._drag_start_x = event.x_root - floating_window.winfo_x()
+    floating_window._drag_start_y = event.y_root - floating_window.winfo_y()
+
+
+def drag_window(event):
+    """拖拽悬浮窗"""
+    if floating_window is None or not floating_window.winfo_exists():
+        return
+    new_x = event.x_root - floating_window._drag_start_x
+    new_y = event.y_root - floating_window._drag_start_y
+    floating_window.geometry(f"+{new_x}+{new_y}")
+
+
 def show_floating_window():
-    """显示一个极简悬浮窗，作为收起状态"""
+    """显示一个圆形悬浮小窗，支持拖动和双击恢复主窗口，并随分辨率自适应"""
     global floating_window
     if floating_window is not None and floating_window.winfo_exists():
         floating_window.deiconify()
@@ -262,24 +296,57 @@ def show_floating_window():
 
     floating_window = tk.Toplevel(root)
     floating_window.title("随机抽签器")
-    floating_window.geometry("170x80")
+
+    screen_min = min(root.winfo_screenwidth(), root.winfo_screenheight())
+    float_size = max(72, min(110, int(screen_min * 0.072)))
+    floating_window.geometry(f"{float_size}x{float_size}")
     floating_window.overrideredirect(True)
     floating_window.attributes("-topmost", True)
-    floating_window.configure(bg="#f0f0f0")
 
-    pos_x = root.winfo_x() + root.winfo_width() - 180
-    pos_y = root.winfo_y() + root.winfo_height() - 90
+    transparent_color = "#eef2f7"
+    floating_window.configure(bg=transparent_color)
+    if sys.platform.startswith("win"):
+        floating_window.attributes("-transparentcolor", transparent_color)
+
+    pos_x = root.winfo_x() + root.winfo_width() - float_size - 18
+    pos_y = root.winfo_y() + root.winfo_height() - float_size - 18
     floating_window.geometry(f"+{pos_x}+{pos_y}")
 
-    tk.Label(
+    circle = tk.Canvas(
         floating_window,
-        text="随机抽签器",
-        bg="#f0f0f0",
-        font=(default_family, 11, "bold"),
-    ).pack(pady=(12, 6))
-    ttk.Button(floating_window, text="打开", command=restore_main_window).pack(pady=(0, 8))
+        width=float_size,
+        height=float_size,
+        bg=transparent_color,
+        highlightthickness=0,
+        bd=0,
+    )
+    circle.pack()
+    circle.create_oval(5, 5, float_size - 5, float_size - 5, fill="#ffffff", outline="#dfe7f0", width=2)
+    circle.create_oval(int(float_size * 0.24), int(float_size * 0.24), int(float_size * 0.76), int(float_size * 0.76), fill="#f2f7ff", outline="#dbeaff", width=1)
+    circle.create_text(
+        float_size / 2,
+        float_size / 2,
+        text="抽",
+        fill="#4b5563",
+        font=(default_family, max(11, int(float_size * 0.18)), "bold"),
+    )
+
+    def on_drag_press(event):
+        start_drag(event)
+        floating_window._dragging = True
+
+    def on_drag_motion(event):
+        if getattr(floating_window, "_dragging", False):
+            drag_window(event)
+
+    def on_drag_release(event):
+        floating_window._dragging = False
+
+    circle.bind("<ButtonPress-1>", on_drag_press)
+    circle.bind("<B1-Motion>", on_drag_motion)
+    circle.bind("<ButtonRelease-1>", on_drag_release)
+    circle.bind("<Double-Button-1>", lambda e: restore_main_window())
     floating_window.protocol("WM_DELETE_WINDOW", lambda: root.destroy())
-    floating_window.bind("<Button-1>", lambda e: restore_main_window())
 
 
 def toggle_autostart():
@@ -345,18 +412,49 @@ def show_disclaimer():
     ttk.Button(disclaimer, text="确定", command=disclaimer.destroy).pack(pady=(0, 15))
 
 
+def create_round_button(parent, text, command, width=130, height=38, bg="#edf4ff", fg="#1d4ed8", active_bg="#dfeeff"):
+    """创建一个稳定可用的白板风格按钮，保留清晰点击功能"""
+    button = tk.Button(
+        parent,
+        text=text,
+        command=command,
+        width=width // 8,
+        height=2,
+        bg=bg,
+        fg=fg,
+        activebackground=active_bg,
+        activeforeground=fg,
+        borderwidth=0,
+        highlightthickness=0,
+        relief="flat",
+        padx=18,
+        pady=8,
+        cursor="hand2",
+        font=(default_family, 10, "bold"),
+    )
+    button.pack(side="left", padx=10)
+    return button
+
+
 # === 主窗口 ===
 root = tk.Tk()
 root.title("随机抽签器 · 双模式")
-root.geometry("460x320")
-root.minsize(400, 260)
+root.configure(bg="#eef2f7")
+
+screen_w = root.winfo_screenwidth()
+screen_h = root.winfo_screenheight()
+window_w = min(max(420, int(screen_w * 0.32)), 560)
+window_h = min(max(300, int(screen_h * 0.42)), 420)
+root.geometry(f"{window_w}x{window_h}")
+root.minsize(int(window_w * 0.8), int(window_h * 0.7))
 root.resizable(True, True)
 root.attributes("-topmost", True)
+root.update_idletasks()
+root.attributes("-alpha", 0.98)
 
 # 菜单栏
-menubar = tk.Menu(root)
-# 帮助菜单
-help_menu = tk.Menu(menubar, tearoff=0)
+menubar = tk.Menu(root, bg="#ffffff", fg="#1f2937")
+help_menu = tk.Menu(menubar, tearoff=0, bg="#ffffff", fg="#1f2937")
 help_menu.add_command(label="编辑配置文件", command=open_config_file)
 help_menu.add_command(label="关于", command=show_about)
 help_menu.add_command(label="免责声明", command=show_disclaimer)
@@ -372,59 +470,75 @@ root.protocol("WM_DELETE_WINDOW", minimize_to_floating)
 
 # 使用系统默认字体（避免跨平台字体缺失）
 default_family = tkfont.nametofont("TkDefaultFont").actual("family")
-big_font = (default_family, 16, "bold")
+big_font = (default_family, 17, "bold")
 small_font = (default_family, 10)
+
+style = ttk.Style(root)
+style.theme_use("clam")
+style.configure("WhiteBoard.TFrame", background="#ffffff")
+style.configure("WhiteBoard.TLabel", background="#ffffff", foreground="#374151")
+style.configure("WhiteBoard.TRadiobutton", background="#eef2f7", foreground="#374151", focuscolor="#eef2f7")
+style.map("WhiteBoard.TRadiobutton", background=[("active", "#eef2f7")])
+
+panel = tk.Frame(
+    root,
+    bg="#ffffff",
+    highlightbackground="#dde7f2",
+    highlightthickness=1,
+    padx=18,
+    pady=18,
+)
+panel.pack(fill="both", expand=True, padx=18, pady=(12, 10))
+
+root.update_idletasks()
+root.overrideredirect(False)
+
+for widget in [root, panel]:
+    widget.configure(bd=0)
+
+root.bind("<Configure>", lambda event: None)
 
 # 结果显示区域
 result_var = tk.StringVar(value="点击下方按钮开始抽签")
-result_label = ttk.Label(
-    root,
+result_label = tk.Label(
+    panel,
     textvariable=result_var,
+    bg="#ffffff",
+    fg="#1f2937",
     font=big_font,
     justify="center",
-    wraplength=420,
+    wraplength=max(260, window_w - 100),
 )
-result_label.pack(expand=True, fill="both", padx=20, pady=(20, 5))
+result_label.pack(fill="x", pady=(0, 12))
 
 # 剩余数字显示（仅不放回有效）
 remaining_str = tk.StringVar()
-remaining_label = ttk.Label(
-    root,
+remaining_label = tk.Label(
+    panel,
     textvariable=remaining_str,
+    bg="#ffffff",
+    fg="#6b7280",
     font=small_font,
-    foreground="gray",
-    wraplength=360,
+    wraplength=max(260, window_w - 120),
     justify="center",
 )
-remaining_label.pack(pady=(0, 10), padx=20)
+remaining_label.pack(fill="x")
 
 # 模式选择框架
-mode_frame = ttk.Frame(root)
-mode_frame.pack(pady=5)
+mode_frame = tk.Frame(root, bg="#eef2f7")
+mode_frame.pack(pady=(0, 8))
 mode_var = tk.StringVar(value="pseudo")
 mode_var.trace_add("write", on_mode_change)
-ttk.Radiobutton(
-    mode_frame,
-    text="不放回（伪随机）",
-    variable=mode_var,
-    value="pseudo",
-    width=16,
-).pack(side="left", padx=8)
-ttk.Radiobutton(
-    mode_frame,
-    text="放回（真随机）",
-    variable=mode_var,
-    value="true_random",
-    width=16,
-).pack(side="left", padx=8)
+
+radio_style = {"bg": "#eef2f7", "fg": "#374151", "activebackground": "#eef2f7", "activeforeground": "#111827", "selectcolor": "#eef2f7", "font": (default_family, 10)}
+tk.Radiobutton(mode_frame, text="不放回（伪随机）", variable=mode_var, value="pseudo", width=16, **radio_style).pack(side="left", padx=8)
+tk.Radiobutton(mode_frame, text="放回（真随机）", variable=mode_var, value="true_random", width=16, **radio_style).pack(side="left", padx=8)
 
 # 操作按钮
-btn_frame = ttk.Frame(root)
-btn_frame.pack(pady=(10, 20))
-btn_draw = ttk.Button(btn_frame, text="🎲 抽签", command=generate)
-btn_draw.pack(side="left", padx=10, ipadx=10, ipady=4)
-btn_reset = ttk.Button(btn_frame, text="🔄 重置", command=reset_pool)
-btn_reset.pack(side="left", padx=10, ipadx=10, ipady=4)
+btn_frame = tk.Frame(root, bg="#eef2f7")
+btn_frame.pack(pady=(0, 18))
+btn_draw = create_round_button(btn_frame, "🎲 抽签", generate, width=120)
+btn_reset = create_round_button(btn_frame, "🔄 重置", reset_pool, width=120)
 
 # 初始化不放回池
 init_pool()
