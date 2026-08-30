@@ -117,6 +117,26 @@ def init_pool():
     random.shuffle(remaining_pool)
 
 
+def animate_result(final_num, steps=10, delay_ms=20):
+    """让结果在极短时间内快速滚动后停在最终值"""
+    if getattr(root, "_draw_animation", None):
+        root.after_cancel(root._draw_animation)
+        root._draw_animation = None
+
+    seq = [random.randint(1, 54) for _ in range(steps)]
+    seq.append(final_num)
+
+    def tick(index):
+        if index >= len(seq):
+            result_var.set(f"输出结果: {final_num}")
+            root._draw_animation = None
+            return
+        result_var.set(f"输出结果: {seq[index]}")
+        root._draw_animation = root.after(delay_ms, tick, index + 1)
+
+    tick(0)
+
+
 def generate():
     """根据当前模式生成一个随机数"""
     reload_config()
@@ -135,7 +155,7 @@ def generate():
             num = remaining_pool[idx]
             if num not in reroll_triggers or attempt == max_rerolls:
                 del remaining_pool[idx]
-                result_var.set(f"输出结果: {num}")
+                animate_result(num)
                 break
         update_remaining()
     else:  # 放回（每次独立，可重复）
@@ -145,7 +165,7 @@ def generate():
         while True:
             num = random.choice(pool)
             if num not in reroll_triggers:
-                result_var.set(f"输出结果: {num}")
+                animate_result(num)
                 break
         # 放回模式不消耗数字，无需更新剩余池
 
