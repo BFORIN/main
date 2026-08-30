@@ -1,11 +1,18 @@
 import tkinter as tk
 from tkinter import ttk
 import tkinter.font as tkfont
+import tkinter.messagebox as messagebox
 import random
 import json
 import sys
 import os
 import webbrowser
+
+DEFAULT_CONFIG = {
+    "excluded": [39, 50],
+    "reroll_triggers": [46, 47, 49],
+    "max_rerolls": 10
+}
 
 
 def get_config_path():
@@ -16,21 +23,52 @@ def get_config_path():
     return os.path.join(base_path, "config.json")
 
 
-def load_config():
+def normalize_config(raw_cfg):
+    if not isinstance(raw_cfg, dict):
+        raw_cfg = {}
+
+    merged = {**DEFAULT_CONFIG, **raw_cfg}
+
+    try:
+        merged["excluded"] = [int(x) for x in merged.get("excluded", DEFAULT_CONFIG["excluded"])]
+    except Exception:
+        merged["excluded"] = DEFAULT_CONFIG["excluded"]
+
+    try:
+        merged["reroll_triggers"] = [int(x) for x in merged.get("reroll_triggers", DEFAULT_CONFIG["reroll_triggers"])]
+    except Exception:
+        merged["reroll_triggers"] = DEFAULT_CONFIG["reroll_triggers"]
+
+    try:
+        merged["max_rerolls"] = max(0, int(merged.get("max_rerolls", DEFAULT_CONFIG["max_rerolls"])))
+    except Exception:
+        merged["max_rerolls"] = DEFAULT_CONFIG["max_rerolls"]
+
+    return merged
+
+
+def ensure_config_file():
     config_path = get_config_path()
-    default_config = {
-        "excluded": [39, 50],
-        "reroll_triggers": [46, 47, 49]
-    }
     if not os.path.exists(config_path):
-        save_config(default_config)
-        return default_config
+        save_config(DEFAULT_CONFIG)
+        return DEFAULT_CONFIG
+
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             user_cfg = json.load(f)
-        return {**default_config, **user_cfg}
     except Exception:
-        return default_config
+        user_cfg = {}
+
+    normalized = normalize_config(user_cfg)
+    existing_keys = set(user_cfg.keys()) if isinstance(user_cfg, dict) else set()
+    missing_keys = [key for key in DEFAULT_CONFIG if key not in existing_keys]
+    if missing_keys or normalized != user_cfg:
+        save_config(normalized)
+    return normalized
+
+
+def load_config():
+    return ensure_config_file()
 
 
 def save_config(cfg):
@@ -52,21 +90,28 @@ def open_config_file():
         elif sys.platform.startswith("darwin"):
             import subprocess
             subprocess.run(["open", cfg_path], check=True)
-        tk.messagebox.showinfo("提示", "配置文件已打开，修改保存后重启程序生效")
+        messagebox.showinfo("提示", "配置文件已打开，修改后会自动热加载，保存即可生效")
     except Exception as e:
-        tk.messagebox.showerror("错误", f"无法打开配置文件：{str(e)}")
+        messagebox.showerror("错误", f"无法打开配置文件：{str(e)}")
+
+
+def reload_config():
+    """从配置文件热加载禁用数字、重抽触发数字和重抽次数"""
+    global _cfg, excluded, reroll_triggers, max_rerolls
+    _cfg = load_config()
+    excluded = set(_cfg["excluded"])
+    reroll_triggers = set(_cfg["reroll_triggers"])
+    max_rerolls = int(_cfg.get("max_rerolls", 10))
 
 
 # 加载配置，替换原硬编码常量
-_cfg = load_config()
-excluded = set(_cfg["excluded"])
-reroll_triggers = set(_cfg["reroll_triggers"])
-
+reload_config()
 remaining_pool = []
 
 
 def init_pool():
     """初始化/重置数字池（仅不放回模式使用）"""
+    reload_config()
     global remaining_pool
     remaining_pool = [x for x in range(1, 55) if x not in excluded]
     random.shuffle(remaining_pool)
@@ -74,6 +119,7 @@ def init_pool():
 
 def generate():
     """根据当前模式生成一个随机数"""
+    reload_config()
     mode = mode_var.get()
 
     if mode == "pseudo":  # 不放回（不重复）
@@ -83,8 +129,7 @@ def generate():
             result_var.set("本轮已全部抽完，以自动重置新一轮")
             update_remaining()
             return
-        # 最多重抽10次：触发数字放回池中，直到抽到非触发数或达到上限
-        max_rerolls = 10
+        # 热加载配置中的重抽次数：触发数字放回池中，直到抽到非触发数或达到上限
         for attempt in range(max_rerolls + 1):
             idx = random.randrange(len(remaining_pool))
             num = remaining_pool[idx]
@@ -115,6 +160,7 @@ def update_remaining():
 
 def reset_pool():
     """手动重置数字池（不放回模式）"""
+    reload_config()
     global remaining_pool
     init_pool()
     result_var.set("数字池已重置")
@@ -123,6 +169,7 @@ def reset_pool():
 
 def on_mode_change(*args):
     """模式切换时的处理：清空提示，重置不放回池"""
+    reload_config()
     if mode_var.get() == "pseudo":
         init_pool()
         result_var.set("点击下方按钮开始抽签（不放回）")
@@ -190,19 +237,13 @@ def show_disclaimer():
     ttk.Button(disclaimer, text="确定", command=disclaimer.destroy).pack(pady=(0, 15))
 
 
-def toggle_topmost():
-    """切换窗口是否始终显示在最前层，用于覆盖独占全屏窗口"""
-    is_topmost = root.attributes("-topmost")
-    root.attributes("-topmost", not is_topmost)
-    btn_topmost.configure(text="📌 取消置顶" if not is_topmost else "📌 置顶显示")
-
-
 # === 主窗口 ===
 root = tk.Tk()
 root.title("随机抽签器 · 双模式")
 root.geometry("460x320")
 root.minsize(400, 260)
 root.resizable(True, True)
+root.attributes("-topmost", True)
 
 # 菜单栏
 menubar = tk.Menu(root)
@@ -213,12 +254,6 @@ help_menu.add_command(label="关于", command=show_about)
 help_menu.add_command(label="免责声明", command=show_disclaimer)
 menubar.add_cascade(label="帮助", menu=help_menu)
 root.config(menu=menubar)
-
-# 顶部工具栏：放在“帮助”旁边，不放在下拉菜单中
-toolbar = ttk.Frame(root)
-toolbar.pack(fill="x", padx=8, pady=(6, 0))
-btn_topmost = ttk.Button(toolbar, text="📌 置顶显示", command=toggle_topmost)
-btn_topmost.pack(anchor="e")
 
 # 使用系统默认字体（避免跨平台字体缺失）
 default_family = tkfont.nametofont("TkDefaultFont").actual("family")
@@ -280,4 +315,5 @@ btn_reset.pack(side="left", padx=10, ipadx=10, ipady=4)
 init_pool()
 update_remaining()
 
-root.mainloop()
+if __name__ == "__main__":
+    root.mainloop()
