@@ -2,17 +2,11 @@
 
 import json
 import os
+import random
 import tempfile
 import unittest
 
-from draw_core import (
-    MODE_PSEUDO,
-    MODE_TRUE_RANDOM,
-    ConfigStore,
-    DrawConfig,
-    DrawEngine,
-    normalize_config,
-)
+from draw_core import ConfigStore, DrawConfig, DrawEngine, normalize_config
 
 
 def make_engine(**cfg):
@@ -30,14 +24,10 @@ class TestNormalizeConfig(unittest.TestCase):
             self.assertEqual(normalize_config(bad), normalize_config({}))
 
     def test_illegal_fields_fall_back_individually(self):
-        cfg = normalize_config({"max_rerolls": "abc", "pool_min": None, "excluded": "x"})
+        cfg = normalize_config({"pool_min": None, "excluded": "x"})
         defaults = normalize_config({})
-        self.assertEqual(cfg["max_rerolls"], defaults["max_rerolls"])
         self.assertEqual(cfg["pool_min"], defaults["pool_min"])
         self.assertEqual(cfg["excluded"], defaults["excluded"])
-
-    def test_negative_rerolls_clamped_to_zero(self):
-        self.assertEqual(normalize_config({"max_rerolls": -5})["max_rerolls"], 0)
 
     def test_inverted_range_falls_back(self):
         cfg = normalize_config({"pool_min": 54, "pool_max": 1})
@@ -48,6 +38,18 @@ class TestNormalizeConfig(unittest.TestCase):
         cfg = normalize_config({"excluded": ["37", 39], "pool_min": "1", "pool_max": "10"})
         self.assertEqual(cfg["excluded"], [37, 39])
         self.assertEqual((cfg["pool_min"], cfg["pool_max"]), (1, 10))
+
+    def test_deprecated_reroll_keys_are_dropped(self):
+        """已废弃的重抽配置不再生效，也不会写回配置文件。"""
+        cfg = normalize_config({"reroll_triggers": [46, 47], "max_rerolls": 10})
+        self.assertNotIn("reroll_triggers", cfg)
+        self.assertNotIn("max_rerolls", cfg)
+
+    def test_unknown_keys_are_dropped(self):
+        self.assertEqual(
+            set(normalize_config({"excluded": [], "pool_min": 1, "pool_max": 5, "wtf": 1})),
+            {"excluded", "pool_min", "pool_max"},
+        )
 
 
 class TestDrawConfig(unittest.TestCase):
@@ -91,68 +93,91 @@ class TestConfigStore(unittest.TestCase):
             f.write("{ not json")
         self.assertEqual(ConfigStore(path).load().as_dict(), DrawConfig().as_dict())
 
+    def test_legacy_reroll_keys_removed_from_file(self):
+        """旧配置文件里的重抽字段应被清除，避免留下已失效的开关。"""
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "config.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"excluded": [1], "reroll_triggers": [46], "max_rerolls": 10,
+                       "pool_min": 1, "pool_max": 54}, f)
+
+        ConfigStore(path).load()
+        with open(path, "r", encoding="utf-8") as f:
+            written = json.load(f)
+
+        self.assertEqual(set(written), {"excluded", "pool_min", "pool_max"})
+        self.assertEqual(written["excluded"], [1])
+
 
 class TestDrawEngine(unittest.TestCase):
-    CFG = {"pool_min": 1, "pool_max": 20, "excluded": [20], "reroll_triggers": [7, 8, 9]}
+    CFG = {"pool_min": 1, "pool_max": 20, "excluded": [20]}
 
-    def test_pseudo_mode_consumes_exactly_one_per_draw(self):
+    def test_consumes_exactly_one_per_draw(self):
         engine = make_engine(**self.CFG)
         engine.reset_pool()
         expected = len(DrawConfig(self.CFG).candidates())
         for _ in range(expected):
-            self.assertIsNotNone(engine.draw(MODE_PSEUDO))
+            self.assertIsNotNone(engine.draw())
             expected -= 1
             self.assertEqual(len(engine.remaining_pool), expected)
 
-    def test_pseudo_mode_drains_then_reports(self):
+    def test_drains_then_reports(self):
         engine = make_engine(**self.CFG)
         engine.reset_pool()
         for _ in range(len(DrawConfig(self.CFG).candidates())):
-            engine.draw(MODE_PSEUDO)
-        self.assertIsNone(engine.draw(MODE_PSEUDO))
+            engine.draw()
+        self.assertIsNone(engine.draw())
         self.assertIn("抽完", engine.last_error)
 
-    def test_pseudo_mode_only_returns_candidates(self):
+    def test_only_returns_candidates(self):
         engine = make_engine(**self.CFG)
         candidates = set(DrawConfig(self.CFG).candidates())
         engine.reset_pool()
         for _ in range(len(candidates)):
-            self.assertIn(engine.draw(MODE_PSEUDO), candidates)
+            self.assertIn(engine.draw(), candidates)
 
-    def test_true_mode_never_returns_trigger(self):
-        engine = make_engine(**self.CFG)
-        triggers = set(DrawConfig(self.CFG).reroll_triggers)
-        for _ in range(300):
-            self.assertNotIn(engine.draw(MODE_TRUE_RANDOM), triggers)
-
-    def test_true_mode_does_not_consume_pool(self):
+    def test_full_cycle_yields_every_number_exactly_once(self):
         engine = make_engine(**self.CFG)
         engine.reset_pool()
-        size = len(engine.remaining_pool)
-        for _ in range(50):
-            engine.draw(MODE_TRUE_RANDOM)
-        self.assertEqual(len(engine.remaining_pool), size)
+        drawn = sorted(engine.draw() for _ in range(len(DrawConfig(self.CFG).candidates())))
+        self.assertEqual(drawn, sorted(DrawConfig(self.CFG).candidates()))
 
-    def test_zero_rerolls_lets_triggers_through(self):
-        cfg = {**self.CFG, "max_rerolls": 0}
-        engine = make_engine(**cfg)
-        triggers = set(DrawConfig(cfg).reroll_triggers)
+    def test_distribution_is_uniform(self):
+        """没有任何加权或排除机制，各号码出现频次应当接近。"""
+        pool_size, rounds = 54, 400
+        engine = make_engine(pool_min=1, pool_max=pool_size, excluded=[])
+        random.seed(20240101)
+        counts = [0] * (pool_size + 1)
+        for _ in range(rounds):
+            engine.reset_pool()
+            for _ in range(pool_size):
+                counts[engine.draw()] += 1
+
+        expected = rounds * pool_size / pool_size
+        deviations = [abs(counts[i] - expected) for i in range(1, pool_size + 1)]
+        # 400 轮 × 54 次 = 21600 次抽样，单号标准差约 20，3σ ≈ 60
+        self.assertLess(max(deviations), 60, f"分布偏离均匀：{counts}")
+
+    def test_excluded_numbers_never_drawn(self):
+        engine = make_engine(pool_min=1, pool_max=30, excluded=[5, 6, 7])
         engine.reset_pool()
-        drawn = [engine.draw(MODE_PSEUDO) for _ in range(300)]
-        self.assertTrue(set(drawn) & triggers, "max_rerolls=0 时触发号应当能被抽到")
+        drawn = {engine.draw() for _ in range(1000) if engine.remaining_pool}
+        engine.reset_pool()
+        drawn |= {engine.draw() for _ in range(1000)}
+        self.assertFalse(drawn & {5, 6, 7})
 
     def test_empty_pool_reports_instead_of_crashing(self):
         engine = make_engine(pool_min=1, pool_max=5, excluded=[1, 2, 3, 4, 5])
         engine.reset_pool()
-        self.assertIsNone(engine.draw(MODE_TRUE_RANDOM))
-        self.assertIn("候选数字为空", engine.last_error)
+        self.assertIsNone(engine.draw())
+        self.assertIn("抽完", engine.last_error)
 
     def test_reload_picks_up_config_changes(self):
         engine = make_engine(**self.CFG)
         engine.reset_pool()
         old_pool = sorted(engine.remaining_pool)
         with open(engine.store.path, "w", encoding="utf-8") as f:
-            json.dump({"pool_min": 1, "pool_max": 5, "excluded": [], "reroll_triggers": [], "max_rerolls": 10}, f)
+            json.dump({"pool_min": 1, "pool_max": 5, "excluded": []}, f)
 
         engine.reload()
 

@@ -1,4 +1,4 @@
-"""随机抽签器 · 双模式随机工具（Tkinter 界面层）。
+"""随机抽签器（Tkinter 界面层）。
 
 抽签规则与配置解析全部位于 draw_core.py，本文件只负责界面与交互。
 """
@@ -14,9 +14,9 @@ import tkinter.font as tkfont
 import tkinter.messagebox as messagebox
 from tkinter import ttk
 
-from draw_core import DrawEngine, MODE_PSEUDO, MODE_TRUE_RANDOM
+from draw_core import DrawEngine
 
-APP_TITLE = "随机抽签器 · 双模式"
+APP_TITLE = "随机抽签器"
 BG = "#eef2f7"
 CARD_BG = "#ffffff"
 ACCENT = "#1d4ed8"
@@ -145,9 +145,13 @@ class DrawApp:
         )
         panel.pack(fill="both", expand=True, padx=18, pady=(12, 10))
 
+        # 卡片铺满窗口，内容垂直居中，避免留下大片空白
+        content = tk.Frame(panel, bg=CARD_BG, bd=0)
+        content.pack(expand=True)
+
         self.result_var = tk.StringVar(value="点击下方按钮开始抽签")
         tk.Label(
-            panel,
+            content,
             textvariable=self.result_var,
             bg=CARD_BG,
             fg=TEXT,
@@ -157,10 +161,10 @@ class DrawApp:
             bd=0,
         ).pack(fill="x", pady=(0, 12))
 
-        # 剩余数字显示（仅不放回有效）
+        # 剩余数字显示
         self.remaining_str = tk.StringVar()
         tk.Label(
-            panel,
+            content,
             textvariable=self.remaining_str,
             bg=CARD_BG,
             fg=MUTED,
@@ -171,28 +175,6 @@ class DrawApp:
         ).pack(fill="x")
 
     def _build_controls(self):
-        self.mode_var = tk.StringVar(value=MODE_PSEUDO)
-        self.mode_var.trace_add("write", self.on_mode_change)
-
-        mode_frame = tk.Frame(self.root, bg=BG, bd=0)
-        mode_frame.pack(pady=(0, 8))
-        radio_style = {
-            "bg": BG,
-            "fg": "#374151",
-            "activebackground": BG,
-            "activeforeground": "#111827",
-            "selectcolor": BG,
-            "font": (self.default_family, 10),
-        }
-        tk.Radiobutton(
-            mode_frame, text="不放回（伪随机）", variable=self.mode_var,
-            value=MODE_PSEUDO, width=16, **radio_style
-        ).pack(side="left", padx=8)
-        tk.Radiobutton(
-            mode_frame, text="放回（真随机）", variable=self.mode_var,
-            value=MODE_TRUE_RANDOM, width=16, **radio_style
-        ).pack(side="left", padx=8)
-
         btn_frame = tk.Frame(self.root, bg=BG, bd=0)
         btn_frame.pack(pady=(0, 18))
         self._make_button(btn_frame, "🎲 抽签", self.generate)
@@ -224,8 +206,8 @@ class DrawApp:
     # ---------- 抽签交互 ----------
 
     def generate(self):
-        """按当前模式抽签并播放滚动动画。"""
-        num = self.engine.draw(self.mode_var.get())
+        """抽一个数字并播放滚动动画。"""
+        num = self.engine.draw()
         if num is None:
             self.result_var.set(self.engine.last_error)
         else:
@@ -233,28 +215,15 @@ class DrawApp:
         self.update_remaining()
 
     def reset_pool(self):
-        """手动重置不放回模式的数字池。"""
+        """手动重置数字池。"""
         self.engine.reload()
         self.engine.reset_pool()
         self.result_var.set("数字池已重置")
         self.update_remaining()
 
-    def on_mode_change(self, *_args):
-        """模式切换时清空提示并重置不放回模式的数字池。"""
-        self.engine.reload()
-        if self.mode_var.get() == MODE_PSEUDO:
-            self.engine.reset_pool()
-            self.result_var.set("点击下方按钮开始抽签（不放回）")
-        else:
-            self.result_var.set("点击下方按钮开始抽签（放回）")
-        self.update_remaining()
-
     def update_remaining(self):
-        """更新剩余数字显示（仅不放回模式有效）。"""
-        if self.mode_var.get() == MODE_PSEUDO:
-            self.remaining_str.set(f"随机池剩余: {len(self.engine.remaining_pool)}")
-        else:
-            self.remaining_str.set("放回模式不显示剩余数字")
+        """更新剩余数字显示。"""
+        self.remaining_str.set(f"随机池剩余: {len(self.engine.remaining_pool)}")
 
     def animate_result(self, final_num, steps=10, delay_ms=20):
         """让结果在极短时间内快速滚动后停在最终值。

@@ -8,13 +8,8 @@ import os
 import random
 import sys
 
-MODE_PSEUDO = "pseudo"
-MODE_TRUE_RANDOM = "true_random"
-
 DEFAULT_CONFIG = {
     "excluded": [37, 39, 50],
-    "reroll_triggers": [46, 47, 49],
-    "max_rerolls": 10,
     "pool_min": 1,
     "pool_max": 54,
 }
@@ -37,21 +32,18 @@ def _as_int_list(raw, fallback):
 
 
 def normalize_config(raw_cfg):
-    """把任意来源的配置规整为一份合法配置，非法字段逐项回落到默认值。"""
+    """把任意来源的配置规整为一份合法配置。
+
+    只保留 DEFAULT_CONFIG 里声明的字段，非法字段逐项回落到默认值；
+    未声明的字段（如已废弃的 reroll_triggers / max_rerolls）直接丢弃，
+    下次保存时便不会再写回配置文件。
+    """
     if not isinstance(raw_cfg, dict):
         raw_cfg = {}
 
-    merged = {**DEFAULT_CONFIG, **raw_cfg}
+    merged = {**DEFAULT_CONFIG, **{k: v for k, v in raw_cfg.items() if k in DEFAULT_CONFIG}}
 
     merged["excluded"] = _as_int_list(merged.get("excluded"), DEFAULT_CONFIG["excluded"])
-    merged["reroll_triggers"] = _as_int_list(
-        merged.get("reroll_triggers"), DEFAULT_CONFIG["reroll_triggers"]
-    )
-
-    try:
-        merged["max_rerolls"] = max(0, int(merged.get("max_rerolls")))
-    except (TypeError, ValueError):
-        merged["max_rerolls"] = DEFAULT_CONFIG["max_rerolls"]
 
     try:
         pool_min = int(merged.get("pool_min"))
@@ -73,8 +65,6 @@ class DrawConfig:
     def __init__(self, data=None):
         data = normalize_config(data)
         self.excluded = set(data["excluded"])
-        self.reroll_triggers = set(data["reroll_triggers"])
-        self.max_rerolls = data["max_rerolls"]
         self.pool_min = data["pool_min"]
         self.pool_max = data["pool_max"]
         self._data = data
@@ -118,7 +108,7 @@ class ConfigStore:
 
 
 class DrawEngine:
-    """持有不放回模式的剩余数字池，并执行两种模式的抽签。"""
+    """持有剩余数字池，并执行抽签。"""
 
     def __init__(self, store=None):
         self.store = store or ConfigStore()
@@ -132,45 +122,20 @@ class DrawEngine:
         return self.config
 
     def reset_pool(self):
-        """重建并打乱不放回模式的数字池。"""
+        """重建并打乱数字池。"""
         self.remaining_pool = self.config.candidates()
         random.shuffle(self.remaining_pool)
 
-    def draw(self, mode):
-        """按模式抽一个数字，抽不到时返回 None 并把原因写进 last_error。"""
+    def draw(self):
+        """从剩余池中等概率抽一个数字并将其移出池，池空时返回 None。"""
         self.reload()
         self.last_error = ""
 
-        if mode == MODE_PSEUDO:
-            num = self._draw_without_replacement()
-            if num is None:
-                self.last_error = "数字池已抽完，请重置后再继续"
-            return num
-
-        num = self._draw_with_replacement()
-        if num is None:
-            self.last_error = "候选数字为空，请检查配置文件"
-        return num
-
-    def _draw_without_replacement(self):
         if not self.remaining_pool:
+            self.last_error = "数字池已抽完，请重置后再继续"
             return None
 
-        # 命中重抽触发号就放回池中继续抽，直到抽到非触发号或达到重抽上限
-        for attempt in range(self.config.max_rerolls + 1):
-            idx = random.randrange(len(self.remaining_pool))
-            num = self.remaining_pool[idx]
-            if num not in self.config.reroll_triggers or attempt == self.config.max_rerolls:
-                del self.remaining_pool[idx]
-                return num
-
-    def _draw_with_replacement(self):
-        pool = self.config.candidates()
-        if not pool:
-            return None
-
-        # 放回模式：抽到触发号就无限重抽，保证最终结果一定不是触发号
-        while True:
-            num = random.choice(pool)
-            if num not in self.config.reroll_triggers:
-                return num
+        idx = random.randrange(len(self.remaining_pool))
+        num = self.remaining_pool[idx]
+        del self.remaining_pool[idx]
+        return num
